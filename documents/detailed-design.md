@@ -29,8 +29,8 @@
 
 | 機能 | 概要 |
 |---|---|
-| 路線別駅一覧表示 | GraphQLから取得した駅を路線ごとにグループ化して表示 |
-| 路線ナビゲーター | 上部の CircleAvatar をタップするとその路線の先頭駅へスクロール |
+| 路線別駅一覧表示 | GraphQLから取得した駅を路線ごとにグループ化し、各グループの先頭に路線名ヘッダーを付けて表示 |
+| 路線ナビゲーター | 上部の CircleAvatar をタップするとその路線の路線名ヘッダー行へスクロール |
 | バス接続展開 | バス路線がある駅を ExpansionTile で展開し、終点駅を表示 |
 | 電車情報ダイアログ | バス終点駅を通る電車の一覧を AlertDialog で表示 |
 | ダイアログからジャンプ | ダイアログの電車をタップして先頭駅へスクロール |
@@ -155,8 +155,40 @@ lib/
 | `stationTrainMap` | `Map<String, List<String>>` | stationsRaw | 駅名 → その駅を通る路線番号のリスト（ダイアログ用） |
 | `stationsByTrain` | `Map<String, List<Map<String, dynamic>>>` | stationsRaw | 路線番号 → 駅データのリスト（グループ化用） |
 | `trainNumbersForHeader` | `List<String>` | trains + stationsByTrain | 上部ナビゲーターの路線番号リスト（表示順） |
-| `firstIndexByTrainNumber` | `Map<String, int>` | stations（整列後） | 路線番号 → 整列済み駅リスト内の先頭インデックス |
-| `stations` | `List<Map<String, dynamic>>` | stationsByTrain + stationsNoTrain | 整列済み・フラット化された最終的な駅リスト |
+| `firstIndexByTrainNumber` | `Map<String, int>` | items（構築中） | 路線番号 → items リスト内のヘッダー行インデックス（ヘッダーを指す） |
+| `items` | `List<_ListItem>` | stationsByTrain + stationsNoTrain | ヘッダー行（`_TrainHeader`）と駅行（`_StationRow`）が混在する最終リスト |
+
+### 4.3 リストアイテムの型定義
+
+駅リスト（`ScrollablePositionedList`）には、ヘッダー行と駅行の2種類のアイテムが混在する。
+これを Dart 3 の `sealed class` で型安全に表現する。
+
+```dart
+sealed class _ListItem {}
+
+final class _TrainHeader extends _ListItem {
+  _TrainHeader({required this.trainNumber, required this.trainName});
+  final String trainNumber;  // 路線番号（例: "JY"）
+  final String trainName;    // 路線名（例: "山手線"）
+}
+
+final class _StationRow extends _ListItem {
+  _StationRow({required this.data});
+  final Map<String, dynamic> data;  // GraphQL レスポンスの駅データ
+}
+```
+
+**リスト構造のイメージ:**
+
+```
+items[0]  = _TrainHeader(trainNumber: "JY",  trainName: "山手線")
+items[1]  = _StationRow(data: {stationName: "渋谷", ...})
+items[2]  = _StationRow(data: {stationName: "新宿", ...})
+items[3]  = _StationRow(data: {stationName: "上野", ...})
+items[4]  = _TrainHeader(trainNumber: "JC",  trainName: "中央線")
+items[5]  = _StationRow(data: {stationName: "東京", ...})
+...
+```
 
 ---
 
@@ -249,7 +281,9 @@ Scaffold
                           └── Expanded
                                 RefreshIndicator(onRefresh: refetch)
                                   ScrollablePositionedList.builder
-                                    itemBuilder: Column(tile + Divider)
+                                    itemBuilder:
+                                      _TrainHeader → Container(路線名ヘッダー)
+                                      _StationRow  → Column(tile + Divider)
 ```
 
 **上部ナビゲーター（路線アイコン）の実装仕様:**
@@ -425,7 +459,7 @@ GraphQL レスポンス (result.data)
     │
     ├── 4. trainNumbersForHeader の構築（表示順の確定）
     │
-    ├── 5. stations（整列済みフラットリスト）と firstIndexByTrainNumber の構築
+    ├── 5. items（ヘッダー行と駅行の混合リスト）と firstIndexByTrainNumber の構築
     │
     └── 6. Column の描画
 ```
@@ -518,27 +552,32 @@ for (final String tn in stationsByTrain.keys) {
 }
 ```
 
-### 6.6 ステップ5: stations（整列済みリスト）と firstIndexByTrainNumber の構築
+### 6.6 ステップ5: items（ヘッダー混合リスト）と firstIndexByTrainNumber の構築
 
-**目的:** `ScrollablePositionedList` に渡すフラットな駅リストを作りながら、各路線の先頭インデックスを記録する
+**目的:** `ScrollablePositionedList` に渡す混合リストを作りながら、各路線のヘッダー行インデックスを記録する
 
 ```dart
-final List<Map<String, dynamic>> stations = [];
+final List<_ListItem> items = [];
 final Map<String, int> firstIndexByTrainNumber = {};
 
 for (final String tn in trainNumbersForHeader) {
   final list = stationsByTrain[tn] ?? [];
   if (list.isEmpty) continue;
 
-  firstIndexByTrainNumber[tn] = stations.length;  // ★ この時点の長さが先頭インデックス
-  stations.addAll(list);
+  firstIndexByTrainNumber[tn] = items.length;  // ★ ヘッダー行を追加する直前の長さ = ヘッダーのインデックス
+  items.add(_TrainHeader(trainNumber: tn, trainName: trainMap[tn] ?? '路線 $tn'));
+  for (final s in list) {
+    items.add(_StationRow(data: s));
+  }
 }
 
-// 路線番号なし駅は最後（ジャンプ対象にしない）
-stations.addAll(stationsNoTrain);
+// 路線番号なし駅は最後（ジャンプ対象にしない、ヘッダーなし）
+for (final s in stationsNoTrain) {
+  items.add(_StationRow(data: s));
+}
 ```
 
-> **補足：** `firstIndexByTrainNumber[tn] = stations.length` を `addAll` の前に記録することがポイント。`addAll` 後だと次の路線の先頭インデックスになってしまう。
+> **補足：** `firstIndexByTrainNumber[tn] = items.length` を `_TrainHeader` の追加前に記録することがポイント。これにより CircleAvatar タップ時もダイアログからのジャンプ時も、インデックスはヘッダー行を指す。
 
 ---
 
@@ -628,7 +667,7 @@ ScrollablePositionedList.builder(
 ### 8.2 _jumpToIndex の仕様
 
 ```
-引数:    index (int) - 移動先の駅リストインデックス
+引数:    index (int) - 移動先の items リストインデックス（通常は路線名ヘッダー行のインデックス）
 処理:
   1. _itemScrollController.isAttached が false なら即座にreturn
   2. scrollTo() を呼び出す
@@ -646,7 +685,7 @@ ScrollablePositionedList.builder(
 | `0.5` | アイテムをリストビューの **中央** に揃える |
 | `1.0` | アイテムをリストビューの **末尾** に揃える |
 
-本アプリでは `0.0` を使用し、路線の先頭駅が画面の一番上に表示される。
+本アプリでは `0.0` を使用し、路線名ヘッダー行が画面の一番上に表示される。
 
 ---
 
@@ -694,8 +733,8 @@ flutter build ipa
 
 | # | 確認内容 | 確認方法 |
 |---|---|---|
-| 1 | 起動後に駅一覧が表示される | 目視確認 |
-| 2 | 上部の路線アイコンをタップするとスクロールされる | 各アイコンをタップして確認 |
+| 1 | 起動後に路線名ヘッダー付きの駅一覧が表示される | 路線の切れ目にヘッダー行が表示されることを目視確認 |
+| 2 | 上部の路線アイコンをタップすると路線名ヘッダー行へスクロールされる | 各アイコンをタップしてヘッダー行が画面先頭に来ることを確認 |
 | 3 | バスアイコン付きの駅をタップすると展開される | 展開・折りたたみを確認 |
 | 4 | ℹ️ボタンをタップするとダイアログが表示される | 複数の駅で確認 |
 | 5 | ダイアログの電車をタップするとジャンプする | スクロール先が正しいか確認 |
@@ -711,3 +750,4 @@ flutter build ipa
 | 版 | 日付 | 内容 |
 |---|---|---|
 | 1.0 | 2026-03-03 | 初版作成 |
+| 1.1 | 2026-03-03 | `_ListItem` sealed class（`_TrainHeader` / `_StationRow`）の追加。`stations` を `items: List<_ListItem>` に変更。`firstIndexByTrainNumber` のインデックス意味をヘッダー行指しに変更。ステップ5のコード更新 |

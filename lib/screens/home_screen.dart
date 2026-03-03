@@ -178,8 +178,8 @@ query {
             }
           }
 
-          // 3) 並べ替え後の stations を作る
-          final List<Map<String, dynamic>> stations = <Map<String, dynamic>>[];
+          // 3) ヘッダー付きの混合リストを作る
+          final List<_ListItem> items = <_ListItem>[];
           final Map<String, int> firstIndexByTrainNumber = <String, int>{};
 
           for (final String tn in trainNumbersForHeader) {
@@ -187,12 +187,17 @@ query {
             if (list.isEmpty) {
               continue;
             }
-            firstIndexByTrainNumber[tn] = stations.length; // ★ここが「路線ブロックの頭」
-            stations.addAll(list);
+            firstIndexByTrainNumber[tn] = items.length; // ★ヘッダー行のindex
+            items.add(_TrainHeader(trainNumber: tn, trainName: trainMap[tn] ?? '路線 $tn'));
+            for (final Map<String, dynamic> s in list) {
+              items.add(_StationRow(data: s));
+            }
           }
 
           // trainNumber が無い駅は最後に足す（ジャンプ対象にしない）
-          stations.addAll(stationsNoTrain);
+          for (final Map<String, dynamic> s in stationsNoTrain) {
+            items.add(_StationRow(data: s));
+          }
 
           // =========================================================
 
@@ -251,9 +256,39 @@ query {
                   child: ScrollablePositionedList.builder(
                     itemScrollController: _itemScrollController,
                     padding: const EdgeInsets.all(12),
-                    itemCount: stations.length,
+                    itemCount: items.length,
                     itemBuilder: (BuildContext context, int index) {
-                      final Map<String, dynamic> s = stations[index];
+                      final _ListItem item = items[index];
+
+                      // ヘッダーアイテム
+                      if (item is _TrainHeader) {
+                        return Container(
+                          padding: const EdgeInsets.fromLTRB(16, 20, 16, 8),
+                          decoration: BoxDecoration(
+                            color: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.4),
+                            border: const Border(bottom: BorderSide(color: Colors.white24)),
+                          ),
+                          child: Row(
+                            children: <Widget>[
+                              const Icon(Icons.train, size: 16, color: Colors.white70),
+                              const SizedBox(width: 8),
+                              Text(
+                                item.trainName,
+                                style: Theme.of(
+                                  context,
+                                ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold, color: Colors.white),
+                              ),
+                              const SizedBox(width: 8),
+                              Text(
+                                item.trainNumber,
+                                style: Theme.of(context).textTheme.labelSmall?.copyWith(color: Colors.white38),
+                              ),
+                            ],
+                          ),
+                        );
+                      }
+
+                      final Map<String, dynamic> s = (item as _StationRow).data;
 
                       final String stationName = (s['stationName'] as String?) ?? '';
                       final String prefecture = (s['prefecture'] as String?) ?? '';
@@ -362,9 +397,7 @@ query {
                         );
                       }
 
-                      return Column(
-                        children: <Widget>[tile, if (index != stations.length - 1) const Divider(height: 1)],
-                      );
+                      return Column(children: <Widget>[tile, if (index != items.length - 1) const Divider(height: 1)]);
                     },
                   ),
                 ),
@@ -375,6 +408,23 @@ query {
       ),
     );
   }
+}
+
+//////////////////////////////////////////////////////////////////
+
+sealed class _ListItem {}
+
+final class _TrainHeader extends _ListItem {
+  _TrainHeader({required this.trainNumber, required this.trainName});
+
+  final String trainNumber;
+  final String trainName;
+}
+
+final class _StationRow extends _ListItem {
+  _StationRow({required this.data});
+
+  final Map<String, dynamic> data;
 }
 
 //////////////////////////////////////////////////////////////////

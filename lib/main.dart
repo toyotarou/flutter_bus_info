@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:graphql_flutter/graphql_flutter.dart';
-import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
 
 import 'screens/home_screen.dart';
 
