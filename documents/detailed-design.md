@@ -34,6 +34,8 @@
 | バス接続展開 | バス路線がある駅を ExpansionTile で展開し、終点駅を表示 |
 | 電車情報ダイアログ | バス終点駅を通る電車の一覧を AlertDialog で表示 |
 | ダイアログからジャンプ | ダイアログの電車をタップして先頭駅へスクロール |
+| 駅名検索バー | テキストボックス + 検索ボタンで駅名を前方一致検索する。入力クリアボタン（×）内包 |
+| 検索結果ダイアログ | 前方一致にマッチした駅を駅名ヘッダー＋路線リスト形式でまとめて表示 |
 | Pull to Refresh | RefreshIndicator で最新データを再取得 |
 
 ### 1.3 動作環境
@@ -248,6 +250,7 @@ MyApp (StatelessWidget)
 | フィールド | 型 | 説明 |
 |---|---|---|
 | `_itemScrollController` | `ItemScrollController` | `ScrollablePositionedList` のスクロール制御 |
+| `_searchController` | `TextEditingController` | 検索テキストボックスの入力制御。`dispose()` で破棄する |
 
 **`_jumpToIndex(int index)` メソッド:**
 
@@ -274,6 +277,11 @@ Scaffold
       [ローディング中] → CircularProgressIndicator
       [エラー]        → _ErrorView(message, onRetry: refetch)
       [正常]          → Column
+                          ├── Padding  ← 検索バー
+                          │     Row
+                          │       ├── Expanded(TextField + suffixIcon(×))
+                          │       └── ElevatedButton('検索')
+                          ├── Divider(height: 1)
                           ├── SizedBox(height: 100)  ← 上部ナビゲーター
                           │     ListView.separated(scrollDirection: horizontal)
                           │       itemBuilder: InkWell + Column(CircleAvatar + Text)
@@ -364,7 +372,112 @@ Card(
 | trainName がなく trainNumber が空でない | `路線番号: {trainNumber}` を追加 |
 | 複数項目がある場合 | ` / ` で結合 |
 
-### 5.3 電車情報ダイアログ
+### 5.3 検索バーの実装仕様
+
+**テキストボックス:**
+
+```dart
+TextField(
+  controller: _searchController,
+  decoration: InputDecoration(
+    hintText: '検索',
+    isDense: true,
+    contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+    border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+    suffixIcon: ValueListenableBuilder<TextEditingValue>(
+      valueListenable: _searchController,
+      builder: (_, value, __) {
+        if (value.text.isEmpty) return const SizedBox.shrink();  // 空欄なら非表示
+        return IconButton(
+          icon: const Icon(Icons.clear, size: 18),
+          onPressed: () => _searchController.clear(),
+        );
+      },
+    ),
+  ),
+)
+```
+
+**検索ボタン押下時のダイアログ:**
+
+```dart
+onPressed: () {
+  final String query = _searchController.text;
+
+  // 前方一致で絞り込む
+  final List<MapEntry<String, List<String>>> results =
+      stationTrainMap.entries
+          .where((e) => e.key.startsWith(query))
+          .toList();
+
+  // 駅名ヘッダー + 路線行 をフラットリストに展開
+  final List<({bool isHeader, String stationName, String tn})> flatItems = [];
+  for (final entry in results) {
+    flatItems.add((isHeader: true, stationName: entry.key, tn: ''));
+    for (final tn in entry.value) {
+      flatItems.add((isHeader: false, stationName: entry.key, tn: tn));
+    }
+  }
+
+  showDialog<void>(
+    context: context,
+    builder: (BuildContext ctx) {
+      return AlertDialog(
+        title: Text(query.isEmpty ? '検索結果' : '"$query" の検索結果'),
+        content: query.isEmpty
+            ? const Text('（未入力）')
+            : results.isEmpty
+                ? const Text('該当する駅が見つかりませんでした')
+                : SizedBox(
+                    width: double.maxFinite,
+                    child: ListView.builder(
+                      shrinkWrap: true,
+                      itemCount: flatItems.length,
+                      itemBuilder: (_, int i) {
+                        final item = flatItems[i];
+                        if (item.isHeader) {
+                          return Padding(
+                            padding: const EdgeInsets.fromLTRB(0, 12, 0, 4),
+                            child: Text(item.stationName,
+                                style: const TextStyle(fontWeight: FontWeight.bold)),
+                          );
+                        }
+                        final String tn = item.tn;
+                        final String name = trainMap[tn] ?? '路線 $tn';
+                        return ListTile(
+                          dense: true,
+                          contentPadding: const EdgeInsets.only(left: 16),
+                          leading: const Icon(Icons.train),
+                          title: Text(name),
+                          subtitle: Text(tn),
+                          onTap: () {
+                            Navigator.pop(ctx);
+                            final int? targetIndex = firstIndexByTrainNumber[tn];
+                            if (targetIndex != null) _jumpToIndex(targetIndex);
+                          },
+                        );
+                      },
+                    ),
+                  ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('閉じる')),
+        ],
+      );
+    },
+  );
+}
+```
+
+**ダイアログの仕様まとめ:**
+
+| 条件 | タイトル | content |
+|---|---|---|
+| 未入力 | `検索結果` | `（未入力）` |
+| 入力あり・ヒットなし | `"{query}" の検索結果` | `該当する駅が見つかりませんでした` |
+| 入力あり・ヒットあり | `"{query}" の検索結果` | 駅名ヘッダー＋路線ListTileのフラットリスト |
+| 路線タップ | ─ | `Navigator.pop(ctx)` → `_jumpToIndex()` |
+
+### 5.5 電車情報ダイアログ
 
 **表示トリガー:** `IconButton(Icons.info_outline)` の `onPressed`
 
@@ -426,7 +539,7 @@ onPressed: () {
 | 電車タップ | `Navigator.pop(ctx)` → `_jumpToIndex(firstIndexByTrainNumber[tn])` |
 | 閉じるボタン | `Navigator.pop(ctx)` のみ（スクロールなし） |
 
-### 5.4 エラービュー (_ErrorView)
+### 5.6 エラービュー (_ErrorView)
 
 ```dart
 class _ErrorView extends StatelessWidget {
@@ -739,9 +852,12 @@ flutter build ipa
 | 4 | ℹ️ボタンをタップするとダイアログが表示される | 複数の駅で確認 |
 | 5 | ダイアログの電車をタップするとジャンプする | スクロール先が正しいか確認 |
 | 6 | 「閉じる」でダイアログが閉じるだけ（スクロールなし） | 目視確認 |
-| 7 | Pull to Refresh でリロードされる | 下に引っ張って確認 |
-| 8 | APIエラー時にリトライボタンが表示される | サーバー停止または不正URLで確認 |
-| 9 | ダークテーマで表示される | 目視確認 |
+| 7 | 検索バーに駅名を入力して「検索」を押すと前方一致結果がダイアログで表示される | 複数ヒットする文字列を入力して複数駅グループが表示されることを確認 |
+| 8 | 検索結果ダイアログの路線をタップするとジャンプする | スクロール先が正しいか確認 |
+| 9 | テキストボックスに入力すると × ボタンが表示され、タップでクリアされる | 入力・クリアを確認 |
+| 10 | Pull to Refresh でリロードされる | 下に引っ張って確認 |
+| 11 | APIエラー時にリトライボタンが表示される | サーバー停止または不正URLで確認 |
+| 12 | ダークテーマで表示される | 目視確認 |
 
 ---
 
@@ -751,3 +867,4 @@ flutter build ipa
 |---|---|---|
 | 1.0 | 2026-03-03 | 初版作成 |
 | 1.1 | 2026-03-03 | `_ListItem` sealed class（`_TrainHeader` / `_StationRow`）の追加。`stations` を `items: List<_ListItem>` に変更。`firstIndexByTrainNumber` のインデックス意味をヘッダー行指しに変更。ステップ5のコード更新 |
+| 1.2 | 2026-03-04 | `_searchController` フィールド追加。5.3 検索バー実装仕様・検索結果ダイアログ仕様を追加。ウィジェットツリー更新。動作確認チェックリスト更新 |

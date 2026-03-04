@@ -53,7 +53,10 @@ class MyApp extends StatelessWidget {
           ),
           dialogTheme: const DialogThemeData(backgroundColor: Color(0xFF1C1C1C)),
         ),
-        home: const HomeScreen(),
+
+        title: 'TOKYO BUS INFO',
+
+        home: GestureDetector(onTap: () => primaryFocus?.unfocus(), child: const HomeScreen()),
       ),
     );
   }
