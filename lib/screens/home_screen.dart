@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:graphql_flutter/graphql_flutter.dart';
 import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
 
@@ -35,9 +36,26 @@ query {
 
   final TextEditingController _searchController = TextEditingController();
 
+  int _collapseGeneration = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    SystemChrome.setPreferredOrientations(<DeviceOrientation>[
+      DeviceOrientation.portraitUp,
+      DeviceOrientation.portraitDown,
+    ]);
+  }
+
   ///
   @override
   void dispose() {
+    SystemChrome.setPreferredOrientations(<DeviceOrientation>[
+      DeviceOrientation.portraitUp,
+      DeviceOrientation.portraitDown,
+      DeviceOrientation.landscapeLeft,
+      DeviceOrientation.landscapeRight,
+    ]);
     _searchController.dispose();
     super.dispose();
   }
@@ -189,7 +207,7 @@ query {
               }
             }
 
-            // 3) ヘッダー付きの混合リストを作る
+            // 3) グループリストを作る
             final List<_ListItem> items = <_ListItem>[];
             final Map<String, int> firstIndexByTrainNumber = <String, int>{};
 
@@ -198,11 +216,8 @@ query {
               if (list.isEmpty) {
                 continue;
               }
-              firstIndexByTrainNumber[tn] = items.length; // ★ヘッダー行のindex
-              items.add(_TrainHeader(trainNumber: tn, trainName: trainMap[tn] ?? '路線 $tn'));
-              for (final Map<String, dynamic> s in list) {
-                items.add(_StationRow(data: s));
-              }
+              firstIndexByTrainNumber[tn] = items.length;
+              items.add(_TrainGroup(trainNumber: tn, trainName: trainMap[tn] ?? '路線 $tn', stations: list));
             }
 
             // trainNumber が無い駅は最後に足す（ジャンプ対象にしない）
@@ -244,11 +259,12 @@ query {
                       const SizedBox(width: 8),
                       ElevatedButton(
                         onPressed: () {
+                          FocusScope.of(context).unfocus();
+                          final String query = _searchController.text;
+                          _searchController.clear();
                           showDialog<void>(
                             context: context,
                             builder: (BuildContext ctx) {
-                              final String query = _searchController.text;
-
                               // 前方一致で駅名を絞り込む
                               final List<MapEntry<String, List<String>>> results = stationTrainMap.entries
                                   .where((MapEntry<String, List<String>> e) => e.key.startsWith(query))
@@ -282,9 +298,6 @@ query {
                                               return Container(
                                                 padding: const EdgeInsets.all(3),
 
-                                                decoration: BoxDecoration(
-                                                  color: Colors.yellowAccent.withValues(alpha: 0.1),
-                                                ),
                                                 child: Text(
                                                   item.stationName,
                                                   style: const TextStyle(fontWeight: FontWeight.bold),
@@ -301,6 +314,7 @@ query {
                                               subtitle: Text(tn),
                                               onTap: () {
                                                 Navigator.pop(ctx);
+                                                FocusManager.instance.primaryFocus?.unfocus();
                                                 final int? targetIndex = firstIndexByTrainNumber[tn];
                                                 if (targetIndex != null) {
                                                   _jumpToIndex(targetIndex);
@@ -324,48 +338,65 @@ query {
                 // ===== 上部：横向き CircleAvatar リスト =====
                 SizedBox(
                   height: 100,
-                  child: ListView.separated(
-                    scrollDirection: Axis.horizontal,
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                    itemCount: trainNumbersForHeader.length,
-                    separatorBuilder: (_, __) => const SizedBox(width: 10),
-                    itemBuilder: (BuildContext context, int index) {
-                      final String tn = trainNumbersForHeader[index];
-                      final String name = trainMap[tn] ?? '路線 $tn';
+                  child: Row(
+                    children: <Widget>[
+                      const SizedBox(width: 10),
 
-                      return InkWell(
-                        borderRadius: BorderRadius.circular(40),
-                        onTap: () {
-                          final int? targetIndex = firstIndexByTrainNumber[tn];
-                          if (targetIndex == null) {
-                            return;
-                          }
-                          _jumpToIndex(targetIndex);
+                      IconButton(
+                        onPressed: () {
+                          setState(() => _collapseGeneration++);
                         },
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: <Widget>[
-                            CircleAvatar(
-                              radius: 28,
-                              child: Padding(
-                                padding: const EdgeInsets.all(6),
-                                child: FittedBox(
-                                  fit: BoxFit.scaleDown,
-                                  child: Text(name, textAlign: TextAlign.center, maxLines: 2),
-                                ),
+                        icon: const Icon(Icons.close),
+                      ),
+
+                      const SizedBox(width: 10),
+
+                      Expanded(
+                        child: ListView.separated(
+                          scrollDirection: Axis.horizontal,
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                          itemCount: trainNumbersForHeader.length,
+                          separatorBuilder: (_, __) => const SizedBox(width: 10),
+                          itemBuilder: (BuildContext context, int index) {
+                            final String tn = trainNumbersForHeader[index];
+                            final String name = trainMap[tn] ?? '路線 $tn';
+
+                            return InkWell(
+                              borderRadius: BorderRadius.circular(40),
+                              onTap: () {
+                                final int? targetIndex = firstIndexByTrainNumber[tn];
+                                if (targetIndex == null) {
+                                  return;
+                                }
+                                _jumpToIndex(targetIndex);
+                              },
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: <Widget>[
+                                  CircleAvatar(
+                                    radius: 28,
+                                    child: Padding(
+                                      padding: const EdgeInsets.all(6),
+                                      child: FittedBox(
+                                        fit: BoxFit.scaleDown,
+                                        child: Text(name, textAlign: TextAlign.center, maxLines: 2),
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 6),
+                                  Text(tn, style: Theme.of(context).textTheme.labelSmall),
+                                ],
                               ),
-                            ),
-                            const SizedBox(height: 6),
-                            Text(tn, style: Theme.of(context).textTheme.labelSmall),
-                          ],
+                            );
+                          },
                         ),
-                      );
-                    },
+                      ),
+                    ],
                   ),
                 ),
                 const Divider(height: 1),
 
-                // ===== 下：stationリスト（構造維持）=====
+                // ===== 下：stationリスト =====
                 Expanded(
                   child: RefreshIndicator(
                     onRefresh: () async {
@@ -378,139 +409,130 @@ query {
                       itemBuilder: (BuildContext context, int index) {
                         final _ListItem item = items[index];
 
-                        // ヘッダーアイテム
-                        if (item is _TrainHeader) {
-                          return Container(
-                            padding: const EdgeInsets.all(3),
+                        // 駅タイルを組み立てるローカル関数
+                        Widget buildStationTile(Map<String, dynamic> s) {
+                          final String stationName = (s['stationName'] as String?) ?? '';
+                          final String prefecture = (s['prefecture'] as String?) ?? '';
+                          final String trainNumber = (s['trainNumber'] as String?) ?? '';
+                          final String? trainName = trainNumber.isEmpty ? null : trainMap[trainNumber];
+                          final List<String> busDests = busMap[stationName] ?? const <String>[];
 
-                            margin: const EdgeInsets.only(top: 20),
-                            decoration: BoxDecoration(color: Colors.yellowAccent.withValues(alpha: 0.2)),
-                            child: Row(
-                              children: <Widget>[
-                                const Icon(Icons.train, size: 16, color: Colors.white70),
-                                const SizedBox(width: 8),
-                                Text(
-                                  item.trainName,
-                                  style: Theme.of(
-                                    context,
-                                  ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold, color: Colors.white),
-                                ),
-                                const SizedBox(width: 8),
-                                Text(
-                                  item.trainNumber,
-                                  style: Theme.of(context).textTheme.labelSmall?.copyWith(color: Colors.white38),
-                                ),
-                              ],
-                            ),
-                          );
-                        }
-
-                        final Map<String, dynamic> s = (item as _StationRow).data;
-
-                        final String stationName = (s['stationName'] as String?) ?? '';
-                        final String prefecture = (s['prefecture'] as String?) ?? '';
-                        final String trainNumber = (s['trainNumber'] as String?) ?? '';
-                        final String? trainName = trainNumber.isEmpty ? null : trainMap[trainNumber];
-
-                        final List<String> children = busMap[stationName] ?? const <String>[];
-
-                        String makeSubtitleBase() {
-                          final List<String> parts = <String>[];
-                          if (prefecture.isNotEmpty) {
-                            parts.add(prefecture);
+                          String makeSubtitleBase() {
+                            final List<String> parts = <String>[];
+                            if (prefecture.isNotEmpty) {
+                              parts.add(prefecture);
+                            }
+                            if (trainName != null && trainName.trim().isNotEmpty) {
+                              parts.add('路線: $trainName');
+                            } else if (trainNumber.trim().isNotEmpty) {
+                              parts.add('路線番号: $trainNumber');
+                            }
+                            return parts.join(' / ');
                           }
-                          if (trainName != null && trainName.trim().isNotEmpty) {
-                            parts.add('路線: $trainName');
-                          } else if (trainNumber.trim().isNotEmpty) {
-                            parts.add('路線番号: $trainNumber');
-                          }
-                          return parts.join(' / ');
-                        }
 
-                        final String baseSubtitle = makeSubtitleBase();
+                          final String baseSubtitle = makeSubtitleBase();
 
-                        Widget tile;
-
-                        if (children.isEmpty) {
-                          tile = ListTile(
-                            title: Text(stationName),
-                            subtitle: baseSubtitle.isEmpty ? null : Text(baseSubtitle),
-                          );
-                        } else {
-                          tile = Card(
-                            elevation: 0,
-                            child: ExpansionTile(
-                              leading: const Icon(Icons.directions_bus),
+                          if (busDests.isEmpty) {
+                            return ListTile(
                               title: Text(stationName),
-                              subtitle: Text(
-                                <String>[
-                                  if (baseSubtitle.isNotEmpty) baseSubtitle,
-                                  '${children.length} 件',
-                                ].join('  /  '),
-                              ),
-                              children: <Widget>[
-                                Padding(
-                                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-                                  child: Column(
-                                    children: children
-                                        .map(
-                                          (String endB) => ListTile(
-                                            dense: true,
-                                            contentPadding: EdgeInsets.zero,
-                                            leading: const Icon(Icons.subdirectory_arrow_right),
-                                            title: Text(endB),
+                              subtitle: baseSubtitle.isEmpty ? null : Text(baseSubtitle),
+                            );
+                          }
 
-                                            trailing: IconButton(
-                                              icon: const Icon(Icons.info_outline),
-                                              onPressed: () {
-                                                final List<String> trainNumbers =
-                                                    stationTrainMap[endB] ?? const <String>[];
-                                                showDialog<void>(
-                                                  context: context,
-                                                  builder: (BuildContext ctx) {
-                                                    return AlertDialog(
-                                                      title: Text('$endB の電車'),
-                                                      content: trainNumbers.isEmpty
-                                                          ? const Text('電車情報がありません')
-                                                          : SizedBox(
-                                                              width: double.maxFinite,
-                                                              child: ListView.builder(
-                                                                shrinkWrap: true,
-                                                                itemCount: trainNumbers.length,
-                                                                itemBuilder: (_, int i) {
-                                                                  final String tn = trainNumbers[i];
-                                                                  final String name = trainMap[tn] ?? '路線 $tn';
-                                                                  return ListTile(
-                                                                    leading: const Icon(Icons.train),
-                                                                    title: Text(name),
-                                                                    subtitle: Text(tn),
-                                                                    onTap: () {
-                                                                      Navigator.pop(ctx);
-                                                                      final int? targetIndex =
-                                                                          firstIndexByTrainNumber[tn];
-                                                                      if (targetIndex != null) {
-                                                                        _jumpToIndex(targetIndex);
-                                                                      }
-                                                                    },
-                                                                  );
-                                                                },
-                                                              ),
+                          return ExpansionTile(
+                            leading: const Icon(Icons.directions_bus),
+                            title: Text(stationName),
+                            subtitle: Text(
+                              <String>[if (baseSubtitle.isNotEmpty) baseSubtitle, '${busDests.length} 件'].join('  /  '),
+                            ),
+                            children: <Widget>[
+                              Padding(
+                                padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                                child: Column(
+                                  children: busDests
+                                      .map(
+                                        (String endB) => ListTile(
+                                          dense: true,
+                                          contentPadding: EdgeInsets.zero,
+                                          leading: const Icon(Icons.subdirectory_arrow_right),
+                                          title: Text(endB),
+                                          trailing: IconButton(
+                                            icon: const Icon(Icons.info_outline),
+                                            onPressed: () {
+                                              final List<String> trainNumbers =
+                                                  stationTrainMap[endB] ?? const <String>[];
+                                              showDialog<void>(
+                                                context: context,
+                                                builder: (BuildContext ctx) {
+                                                  return AlertDialog(
+                                                    title: Text('$endB の電車'),
+                                                    content: trainNumbers.isEmpty
+                                                        ? const Text('電車情報がありません')
+                                                        : SizedBox(
+                                                            width: double.maxFinite,
+                                                            child: ListView.builder(
+                                                              shrinkWrap: true,
+                                                              itemCount: trainNumbers.length,
+                                                              itemBuilder: (_, int i) {
+                                                                final String tn = trainNumbers[i];
+                                                                final String name = trainMap[tn] ?? '路線 $tn';
+                                                                return ListTile(
+                                                                  leading: const Icon(Icons.train),
+                                                                  title: Text(name),
+                                                                  subtitle: Text(tn),
+                                                                  onTap: () {
+                                                                    Navigator.pop(ctx);
+                                                                    final int? targetIndex =
+                                                                        firstIndexByTrainNumber[tn];
+                                                                    if (targetIndex != null) {
+                                                                      _jumpToIndex(targetIndex);
+                                                                    }
+                                                                  },
+                                                                );
+                                                              },
                                                             ),
-                                                    );
-                                                  },
-                                                );
-                                              },
-                                            ),
+                                                          ),
+                                                  );
+                                                },
+                                              );
+                                            },
                                           ),
-                                        )
-                                        .toList(),
-                                  ),
+                                        ),
+                                      )
+                                      .toList(),
                                 ),
-                              ],
+                              ),
+                            ],
+                          );
+                        }
+
+                        // 路線グループ → ExpansionTile（見出し＋駅リスト）
+                        if (item is _TrainGroup) {
+                          return Padding(
+                            padding: const EdgeInsets.only(top: 12),
+                            child: ExpansionTile(
+                              // ignore: always_specify_types
+                              key: ValueKey('${item.trainNumber}_$_collapseGeneration'),
+                              leading: const Icon(Icons.train, size: 16, color: Colors.white70),
+                              title: Text(
+                                item.trainName,
+                                style: Theme.of(
+                                  context,
+                                ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold, color: Colors.white),
+                              ),
+                              subtitle: Text(
+                                item.trainNumber,
+                                style: Theme.of(context).textTheme.labelSmall?.copyWith(color: Colors.white38),
+                              ),
+
+                              children: item.stations.map(buildStationTile).toList(),
                             ),
                           );
                         }
 
+                        // trainNumber 無しの駅
+                        final Map<String, dynamic> s = (item as _StationRow).data;
+                        final Widget tile = buildStationTile(s);
                         return Column(
                           children: <Widget>[tile, if (index != items.length - 1) const Divider(height: 1)],
                         );
@@ -531,11 +553,12 @@ query {
 
 sealed class _ListItem {}
 
-final class _TrainHeader extends _ListItem {
-  _TrainHeader({required this.trainNumber, required this.trainName});
+final class _TrainGroup extends _ListItem {
+  _TrainGroup({required this.trainNumber, required this.trainName, required this.stations});
 
   final String trainNumber;
   final String trainName;
+  final List<Map<String, dynamic>> stations;
 }
 
 final class _StationRow extends _ListItem {
