@@ -3,6 +3,9 @@ import 'package:flutter/services.dart';
 import 'package:graphql_flutter/graphql_flutter.dart';
 import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
 
+import 'components/station_bus_route_display_alert.dart';
+import 'parts/bus_info_dialog.dart';
+
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
@@ -27,6 +30,17 @@ query {
   trains {
     trainNumber
     trainName
+  }
+  busTotalInfo {
+    operator
+    line
+    stops {
+      orderNum
+      name
+      lat
+      lon
+      busStopOrderNum
+    }
   }
 }
 ''';
@@ -170,6 +184,9 @@ query {
 
             // stationName -> trainNumbers のマップ（ダイアログ用）
             final Map<String, List<String>> stationTrainMap = <String, List<String>>{};
+
+            final Map<String, String> stationNameMap = <String, String>{};
+
             for (final dynamic row in stationsRaw) {
               // ignore: always_specify_types
               final Map<String, dynamic> s = (row as Map).cast<String, dynamic>();
@@ -177,10 +194,87 @@ query {
               final String tn = (s['trainNumber'] as String?) ?? '';
               if (name.isNotEmpty && tn.isNotEmpty) {
                 stationTrainMap.putIfAbsent(name, () => <String>[]).add(tn);
+
+                stationNameMap[name] = '';
               }
             }
 
             /// station
+
+            /// busTotalInfo
+            final List<dynamic> busTotalInfo = (result.data?['busTotalInfo'] is List)
+                ? result.data!['busTotalInfo'] as List<dynamic>
+                : <dynamic>[];
+
+            final Map<String, List<String>> stationLineListMap = <String, List<String>>{};
+
+            final Map<String, List<Map<String, String>>> lineBusTotalInfoMap = <String, List<Map<String, String>>>{};
+
+            for (final dynamic route in busTotalInfo) {
+              if (route is! Map) {
+                continue;
+              }
+              final Map<String, dynamic> r = route.cast<String, dynamic>();
+
+              final String? operator = r['operator']?.toString();
+              final String? line = r['line']?.toString();
+              final List<dynamic> stops = (r['stops'] is List) ? r['stops'] as List<dynamic> : <dynamic>[];
+
+              final List<Map<String, String>> busTotalInfoList = <Map<String, String>>[];
+
+              for (final dynamic stop in stops) {
+                if (stop is! Map) {
+                  continue;
+                }
+                final Map<String, dynamic> s = stop.cast<String, dynamic>();
+
+                final String? name = s['name']?.toString();
+                final String? lat = s['lat']?.toString();
+                final String? lon = s['lon']?.toString();
+                final Object? busStopOrderNum = s['busStopOrderNum'];
+
+                if (operator != null &&
+                    operator.isNotEmpty &&
+                    line != null &&
+                    line.isNotEmpty &&
+                    name != null &&
+                    name.isNotEmpty &&
+                    lat != null &&
+                    lat.isNotEmpty &&
+                    lon != null &&
+                    lon.isNotEmpty &&
+                    busStopOrderNum != null) {
+                  busTotalInfoList.add(<String, String>{
+                    'name': name,
+                    'lat': lat,
+                    'lon': lon,
+                    'busStopOrderNum': busStopOrderNum.toString(),
+                  });
+
+                  if (stationNameMap[name] != null) {
+                    stationLineListMap.putIfAbsent(name, () => <String>[]).add('$operator|$line');
+                  } else {
+                    final int idx = name.indexOf('駅');
+                    if (idx != -1) {
+                      final String name2 = name.substring(0, idx);
+                      if (stationNameMap[name2] != null) {
+                        stationLineListMap.putIfAbsent(name2, () => <String>[]).add('$operator|$line');
+                      }
+                    }
+                  }
+                }
+              }
+
+              if (operator != null &&
+                  operator.isNotEmpty &&
+                  line != null &&
+                  line.isNotEmpty &&
+                  busTotalInfoList.isNotEmpty) {
+                lineBusTotalInfoMap['$operator|$line'] = busTotalInfoList;
+              }
+            }
+
+            /// busTotalInfo
 
             // 2) 上部表示用：trainNumber の順序を作る
             //   - ここは「trainMapに存在する順（trainsの並び）」を優先
@@ -439,69 +533,95 @@ query {
                             );
                           }
 
-                          return ExpansionTile(
-                            leading: const Icon(Icons.directions_bus),
-                            title: Text(stationName),
-                            subtitle: Text(
-                              <String>[if (baseSubtitle.isNotEmpty) baseSubtitle, '${busDests.length} 件'].join('  /  '),
-                            ),
+                          return Stack(
                             children: <Widget>[
-                              Padding(
-                                padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-                                child: Column(
-                                  children: busDests
-                                      .map(
-                                        (String endB) => ListTile(
-                                          dense: true,
-                                          contentPadding: EdgeInsets.zero,
-                                          leading: const Icon(Icons.subdirectory_arrow_right),
-                                          title: Text(endB),
-                                          trailing: IconButton(
-                                            icon: const Icon(Icons.info_outline),
-                                            onPressed: () {
-                                              final List<String> trainNumbers =
-                                                  stationTrainMap[endB] ?? const <String>[];
-                                              showDialog<void>(
-                                                context: context,
-                                                builder: (BuildContext ctx) {
-                                                  return AlertDialog(
-                                                    title: Text('$endB の電車'),
-                                                    content: trainNumbers.isEmpty
-                                                        ? const Text('電車情報がありません')
-                                                        : SizedBox(
-                                                            width: double.maxFinite,
-                                                            child: ListView.builder(
-                                                              shrinkWrap: true,
-                                                              itemCount: trainNumbers.length,
-                                                              itemBuilder: (_, int i) {
-                                                                final String tn = trainNumbers[i];
-                                                                final String name = trainMap[tn] ?? '路線 $tn';
-                                                                return ListTile(
-                                                                  leading: const Icon(Icons.train),
-                                                                  title: Text(name),
-                                                                  subtitle: Text(tn),
-                                                                  onTap: () {
-                                                                    Navigator.pop(ctx);
-                                                                    final int? targetIndex =
-                                                                        firstIndexByTrainNumber[tn];
-                                                                    if (targetIndex != null) {
-                                                                      _jumpToIndex(targetIndex);
-                                                                    }
+                              ExpansionTile(
+                                leading: const Icon(Icons.directions_bus, color: Colors.transparent),
+                                title: Text(stationName),
+                                subtitle: Text(
+                                  <String>[
+                                    if (baseSubtitle.isNotEmpty) baseSubtitle,
+                                    '${busDests.length} 件',
+                                  ].join('  /  '),
+                                ),
+                                children: <Widget>[
+                                  Padding(
+                                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                                    child: Column(
+                                      children: busDests
+                                          .map(
+                                            (String endB) => ListTile(
+                                              dense: true,
+                                              contentPadding: EdgeInsets.zero,
+                                              leading: const Icon(Icons.subdirectory_arrow_right),
+                                              title: Text(endB),
+                                              trailing: IconButton(
+                                                icon: const Icon(Icons.info_outline),
+                                                onPressed: () {
+                                                  final List<String> trainNumbers =
+                                                      stationTrainMap[endB] ?? const <String>[];
+                                                  showDialog<void>(
+                                                    context: context,
+                                                    builder: (BuildContext ctx) {
+                                                      return AlertDialog(
+                                                        title: Text('$endB の電車'),
+                                                        content: trainNumbers.isEmpty
+                                                            ? const Text('電車情報がありません')
+                                                            : SizedBox(
+                                                                width: double.maxFinite,
+                                                                child: ListView.builder(
+                                                                  shrinkWrap: true,
+                                                                  itemCount: trainNumbers.length,
+                                                                  itemBuilder: (_, int i) {
+                                                                    final String tn = trainNumbers[i];
+                                                                    final String name = trainMap[tn] ?? '路線 $tn';
+                                                                    return ListTile(
+                                                                      leading: const Icon(Icons.train),
+                                                                      title: Text(name),
+                                                                      subtitle: Text(tn),
+                                                                      onTap: () {
+                                                                        Navigator.pop(ctx);
+                                                                        final int? targetIndex =
+                                                                            firstIndexByTrainNumber[tn];
+                                                                        if (targetIndex != null) {
+                                                                          _jumpToIndex(targetIndex);
+                                                                        }
+                                                                      },
+                                                                    );
                                                                   },
-                                                                );
-                                                              },
-                                                            ),
-                                                          ),
+                                                                ),
+                                                              ),
+                                                      );
+                                                    },
                                                   );
                                                 },
-                                              );
-                                            },
-                                          ),
-                                        ),
-                                      )
-                                      .toList(),
-                                ),
+                                              ),
+                                            ),
+                                          )
+                                          .toList(),
+                                    ),
+                                  ),
+                                ],
                               ),
+
+                              if (stationLineListMap[stationName] != null) ...<Widget>[
+                                Positioned(
+                                  top: 10,
+                                  child: IconButton(
+                                    onPressed: () {
+                                      BusInfoDialog(
+                                        context: context,
+                                        widget: StationBusRouteDisplayAlert(
+                                          stationName: stationName,
+                                          stationLineListMap: stationLineListMap,
+                                          lineBusTotalInfoMap: lineBusTotalInfoMap,
+                                        ),
+                                      );
+                                    },
+                                    icon: const Icon(Icons.sunny),
+                                  ),
+                                ),
+                              ],
                             ],
                           );
                         }
