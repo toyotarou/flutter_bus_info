@@ -1,22 +1,29 @@
 import 'package:flutter/material.dart';
 
+import '../../utility/utility.dart';
+
 class StationBusRouteDisplayAlert extends StatefulWidget {
   const StationBusRouteDisplayAlert({
     super.key,
     required this.stationName,
     required this.stationLineListMap,
     required this.lineBusTotalInfoMap,
+    required this.stationNameMap,
   });
 
   final String stationName;
   final Map<String, List<Map<String, String>>> lineBusTotalInfoMap;
   final Map<String, List<String>> stationLineListMap;
+  final Map<String, String> stationNameMap;
 
   @override
   State<StationBusRouteDisplayAlert> createState() => _StationBusRouteDisplayAlertState();
 }
 
 class _StationBusRouteDisplayAlertState extends State<StationBusRouteDisplayAlert> {
+  Utility utility = Utility();
+
+  ///
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -63,6 +70,21 @@ class _StationBusRouteDisplayAlertState extends State<StationBusRouteDisplayAler
             ? ''
             : element2['busStopOrderNum'].toString().padLeft(2, '0');
 
+        final String stationName = (element2['name'] == null)
+            ? ''
+            : utility.stationNameConverter(name: element2['name']!);
+
+        // if (element2['name'] != null) {
+        //   if (RegExp('駅').firstMatch(element2['name']!) != null) {
+        //     print(element2['name']!);
+        //
+        //     print(utility.stationNameConverter(name: element2['name']!));
+        //   }
+        // }
+        //
+        //
+        //
+
         list2.add(
           Container(
             decoration: BoxDecoration(
@@ -70,9 +92,29 @@ class _StationBusRouteDisplayAlertState extends State<StationBusRouteDisplayAler
             ),
             child: Row(
               children: <Widget>[
-                SizedBox(width: 30, child: Text(rank)),
+                Expanded(
+                  flex: 3,
+                  child: Row(
+                    children: <Widget>[
+                      SizedBox(width: 30, child: Text(rank)),
 
-                Text(element2['name'] ?? ''),
+                      Text(
+                        element2['name'] ?? '',
+
+                        style: TextStyle(
+                          color: (widget.stationNameMap[stationName] != null) ? const Color(0xFFFBB6CE) : Colors.white,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[Text(element2['lat'] ?? ''), Text(element2['lon'] ?? '')],
+                  ),
+                ),
               ],
             ),
           ),

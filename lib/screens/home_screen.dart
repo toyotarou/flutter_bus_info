@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:graphql_flutter/graphql_flutter.dart';
 import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
 
+import '../utility/utility.dart';
 import 'components/station_bus_route_display_alert.dart';
 import 'parts/bus_info_dialog.dart';
 
@@ -52,6 +53,9 @@ query {
 
   int _collapseGeneration = 0;
 
+  Utility utility = Utility();
+
+  ///
   @override
   void initState() {
     super.initState();
@@ -251,16 +255,10 @@ query {
                     'busStopOrderNum': busStopOrderNum.toString(),
                   });
 
-                  if (stationNameMap[name] != null) {
-                    stationLineListMap.putIfAbsent(name, () => <String>[]).add('$operator|$line');
-                  } else {
-                    final int idx = name.indexOf('駅');
-                    if (idx != -1) {
-                      final String name2 = name.substring(0, idx);
-                      if (stationNameMap[name2] != null) {
-                        stationLineListMap.putIfAbsent(name2, () => <String>[]).add('$operator|$line');
-                      }
-                    }
+                  final String stationName = utility.stationNameConverter(name: name);
+
+                  if (stationNameMap[stationName] != null) {
+                    stationLineListMap.putIfAbsent(stationName, () => <String>[]).add('$operator|$line');
                   }
                 }
               }
@@ -615,6 +613,7 @@ query {
                                           stationName: stationName,
                                           stationLineListMap: stationLineListMap,
                                           lineBusTotalInfoMap: lineBusTotalInfoMap,
+                                          stationNameMap: stationNameMap,
                                         ),
                                       );
                                     },
