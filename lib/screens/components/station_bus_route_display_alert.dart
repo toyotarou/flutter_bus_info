@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:latlong2/latlong.dart';
 
+import '../../extensions/extensions.dart';
 import '../../utility/utility.dart';
 
 class StationBusRouteDisplayAlert extends StatefulWidget {
@@ -65,6 +67,27 @@ class _StationBusRouteDisplayAlertState extends State<StationBusRouteDisplayAler
 
     stationLineList?.forEach((String element) {
       final List<Widget> list2 = <Widget>[];
+
+      LatLng? p1;
+      LatLng? p2;
+
+      if (widget.lineBusTotalInfoMap[element] != null) {
+        if (widget.lineBusTotalInfoMap[element]!.first['lat'] != null &&
+            widget.lineBusTotalInfoMap[element]!.first['lon'] != null &&
+            widget.lineBusTotalInfoMap[element]!.last['lat'] != null &&
+            widget.lineBusTotalInfoMap[element]!.last['lon'] != null) {
+          p1 = LatLng(
+            widget.lineBusTotalInfoMap[element]!.first['lat']!.toDouble(),
+            widget.lineBusTotalInfoMap[element]!.first['lon']!.toDouble(),
+          );
+
+          p2 = LatLng(
+            widget.lineBusTotalInfoMap[element]!.last['lat']!.toDouble(),
+            widget.lineBusTotalInfoMap[element]!.last['lon']!.toDouble(),
+          );
+        }
+      }
+
       widget.lineBusTotalInfoMap[element]?.forEach((Map<String, String> element2) {
         final String rank = (element2['busStopOrderNum'] == null)
             ? ''
@@ -135,24 +158,54 @@ class _StationBusRouteDisplayAlertState extends State<StationBusRouteDisplayAler
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: <Widget>[
-              Container(
-                decoration: BoxDecoration(color: Colors.yellowAccent.withValues(alpha: 0.2)),
-                padding: const EdgeInsets.only(right: 10, left: 10, top: 5, bottom: 30),
-                child: Row(
-                  children: <Widget>[
-                    Expanded(child: Text(element.replaceAll('|', '\n'))),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.end,
-                        children: <Widget>[Text(start), Text(end)],
+              Stack(
+                children: <Widget>[
+                  if (p1 != null && p2 != null) ...<Widget>[
+                    Positioned(
+                      bottom: 5,
+                      right: 5,
+                      child: Text(
+                        '${utility.calculateDistance(p1, p2).toInt().toString().toCurrency().replaceAll(',', '.')} Km',
                       ),
                     ),
-
-                    const SizedBox(width: 10),
-
-                    const Icon(Icons.map),
                   ],
-                ),
+
+                  Container(
+                    decoration: BoxDecoration(color: Colors.yellowAccent.withValues(alpha: 0.2)),
+                    padding: const EdgeInsets.only(right: 10, left: 10, top: 5, bottom: 5),
+                    child: Row(
+                      children: <Widget>[
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: <Widget>[
+                              Text(element.replaceAll('|', '\n')),
+
+                              Row(
+                                children: <Widget>[
+                                  const Icon(Icons.arrow_downward, color: Colors.white60),
+                                  const SizedBox(width: 10),
+                                  Text(start),
+                                ],
+                              ),
+                              Row(
+                                children: <Widget>[
+                                  const Icon(Icons.arrow_upward, color: Colors.white60),
+                                  const SizedBox(width: 10),
+                                  Text(end),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+
+                        const SizedBox(width: 10),
+
+                        const Icon(Icons.map),
+                      ],
+                    ),
+                  ),
+                ],
               ),
 
               const SizedBox(height: 10),

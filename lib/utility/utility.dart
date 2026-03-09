@@ -1,3 +1,5 @@
+import 'package:latlong2/latlong.dart';
+
 class Utility {
   ///
   String stationNameConverter({required String name}) {
@@ -21,5 +23,11 @@ class Utility {
     } else {
       return name;
     }
+  }
+
+  ///
+  double calculateDistance(LatLng p1, LatLng p2) {
+    const Distance distance = Distance();
+    return distance.as(LengthUnit.Meter, p1, p2);
   }
 }
