@@ -28,6 +28,7 @@ class MyApp extends StatelessWidget {
         GraphQLClient(
           link: httpLink,
           cache: GraphQLCache(store: HiveStore()),
+          queryRequestTimeout: const Duration(seconds: 30),
         ),
       ),
       child: MaterialApp(

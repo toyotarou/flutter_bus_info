@@ -92,12 +92,15 @@ query {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('TOKYO BUS INFO')),
-      // ignore: always_specify_types
       body: SafeArea(
         // ignore: always_specify_types
         child: Query(
           // ignore: always_specify_types
-          options: QueryOptions(document: gql(_query), fetchPolicy: FetchPolicy.networkOnly),
+          options: QueryOptions(
+            document: gql(_query),
+            fetchPolicy: FetchPolicy.cacheFirst,
+            queryRequestTimeout: const Duration(seconds: 30),
+          ),
           // ignore: always_specify_types
           builder: (QueryResult result, {VoidCallback? refetch, FetchMore? fetchMore}) {
             if (result.isLoading) {
@@ -109,7 +112,6 @@ query {
             }
 
             /// bus
-
             final List<dynamic> buses = (result.data?['buses'] as List<dynamic>?) ?? <dynamic>[];
 
             // endA -> [endB, ...]
@@ -162,13 +164,6 @@ query {
               return const Center(child: Text('stations が空です'));
             }
 
-            // =========================================================
-            // ★ここが修正ポイント：
-            // stations を trainNumber ごとにグルーピングして
-            // 「路線ブロック順（trainNumbersForHeader）」に並べ直した stations を作る
-            // その上で「各路線の先頭 index」を確定させる
-            // =========================================================
-
             // 1) trainNumber -> stations のリスト（元の出現順のまま格納）
             final Map<String, List<Map<String, dynamic>>> stationsByTrain = <String, List<Map<String, dynamic>>>{};
 
@@ -188,7 +183,6 @@ query {
 
             // stationName -> trainNumbers のマップ（ダイアログ用）
             final Map<String, List<String>> stationTrainMap = <String, List<String>>{};
-
             final Map<String, String> stationNameMap = <String, String>{};
 
             for (final dynamic row in stationsRaw) {
@@ -198,7 +192,6 @@ query {
               final String tn = (s['trainNumber'] as String?) ?? '';
               if (name.isNotEmpty && tn.isNotEmpty) {
                 stationTrainMap.putIfAbsent(name, () => <String>[]).add(tn);
-
                 stationNameMap[name] = '';
               }
             }
@@ -211,7 +204,6 @@ query {
                 : <dynamic>[];
 
             final Map<String, List<String>> stationLineListMap = <String, List<String>>{};
-
             final Map<String, List<Map<String, String>>> lineBusTotalInfoMap = <String, List<Map<String, String>>>{};
 
             for (final dynamic route in busTotalInfo) {
@@ -275,8 +267,6 @@ query {
             /// busTotalInfo
 
             // 2) 上部表示用：trainNumber の順序を作る
-            //   - ここは「trainMapに存在する順（trainsの並び）」を優先
-            //   - trainMapに無いが stations に居るものは後ろへ
             final List<String> trainNumbersForHeader = <String>[];
 
             // trains の順に並べる（stationsに存在するものだけ）
@@ -317,8 +307,6 @@ query {
               items.add(_StationRow(data: s));
             }
 
-            // =========================================================
-
             return Column(
               children: <Widget>[
                 Padding(
@@ -357,13 +345,10 @@ query {
                           showDialog<void>(
                             context: context,
                             builder: (BuildContext ctx) {
-                              // 前方一致で駅名を絞り込む
                               final List<MapEntry<String, List<String>>> results = stationTrainMap.entries
                                   .where((MapEntry<String, List<String>> e) => e.key.startsWith(query))
                                   .toList();
 
-                              // station名 + 路線 を1本のフラットリストに展開
-                              // [_SearchHeader(stationName), _SearchTrain(tn), ...]
                               final List<({bool isHeader, String stationName, String tn})> flatItems =
                                   <({bool isHeader, String stationName, String tn})>[];
                               for (final MapEntry<String, List<String>> entry in results) {
@@ -389,7 +374,6 @@ query {
                                             if (item.isHeader) {
                                               return Container(
                                                 padding: const EdgeInsets.all(3),
-
                                                 child: Text(
                                                   item.stationName,
                                                   style: const TextStyle(fontWeight: FontWeight.bold),
@@ -427,22 +411,18 @@ query {
                 ),
                 const Divider(height: 1),
 
-                // ===== 上部：横向き CircleAvatar リスト =====
                 SizedBox(
                   height: 100,
                   child: Row(
                     children: <Widget>[
                       const SizedBox(width: 10),
-
                       IconButton(
                         onPressed: () {
                           setState(() => _collapseGeneration++);
                         },
                         icon: const Icon(Icons.close),
                       ),
-
                       const SizedBox(width: 10),
-
                       Expanded(
                         child: ListView.separated(
                           scrollDirection: Axis.horizontal,
@@ -488,7 +468,6 @@ query {
                 ),
                 const Divider(height: 1),
 
-                // ===== 下：stationリスト =====
                 Expanded(
                   child: RefreshIndicator(
                     onRefresh: () async {
@@ -501,7 +480,6 @@ query {
                       itemBuilder: (BuildContext context, int index) {
                         final _ListItem item = items[index];
 
-                        // 駅タイルを組み立てるローカル関数
                         Widget buildStationTile(Map<String, dynamic> s) {
                           final String stationName = (s['stationName'] as String?) ?? '';
                           final String prefecture = (s['prefecture'] as String?) ?? '';
@@ -601,7 +579,6 @@ query {
                                   ),
                                 ],
                               ),
-
                               if (stationLineListMap[stationName] != null) ...<Widget>[
                                 Positioned(
                                   top: 10,
@@ -625,7 +602,6 @@ query {
                           );
                         }
 
-                        // 路線グループ → ExpansionTile（見出し＋駅リスト）
                         if (item is _TrainGroup) {
                           return Padding(
                             padding: const EdgeInsets.only(top: 12),
@@ -643,13 +619,11 @@ query {
                                 item.trainNumber,
                                 style: Theme.of(context).textTheme.labelSmall?.copyWith(color: Colors.white38),
                               ),
-
                               children: item.stations.map(buildStationTile).toList(),
                             ),
                           );
                         }
 
-                        // trainNumber 無しの駅
                         final Map<String, dynamic> s = (item as _StationRow).data;
                         final Widget tile = buildStationTile(s);
                         return Column(

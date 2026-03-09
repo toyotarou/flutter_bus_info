@@ -137,7 +137,7 @@ class _StationBusRouteDisplayAlertState extends State<StationBusRouteDisplayAler
             children: <Widget>[
               Container(
                 decoration: BoxDecoration(color: Colors.yellowAccent.withValues(alpha: 0.2)),
-                padding: const EdgeInsets.symmetric(vertical: 5, horizontal: 10),
+                padding: const EdgeInsets.only(right: 10, left: 10, top: 5, bottom: 30),
                 child: Row(
                   children: <Widget>[
                     Expanded(child: Text(element.replaceAll('|', '\n'))),
