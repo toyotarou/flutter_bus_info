@@ -3,6 +3,8 @@ import 'package:latlong2/latlong.dart';
 
 import '../../extensions/extensions.dart';
 import '../../utility/utility.dart';
+import '../parts/bus_info_dialog.dart';
+import 'station_bus_route_map_alert.dart';
 
 class StationBusRouteDisplayAlert extends StatefulWidget {
   const StationBusRouteDisplayAlert({
@@ -201,7 +203,15 @@ class _StationBusRouteDisplayAlertState extends State<StationBusRouteDisplayAler
 
                         const SizedBox(width: 10),
 
-                        const Icon(Icons.map),
+                        IconButton(
+                          onPressed: () {
+                            BusInfoDialog(
+                              context: context,
+                              widget: StationBusRouteMapAlert(lineBusRoute: widget.lineBusTotalInfoMap[element]),
+                            );
+                          },
+                          icon: const Icon(Icons.map),
+                        ),
                       ],
                     ),
                   ),

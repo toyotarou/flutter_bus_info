@@ -582,8 +582,8 @@ query {
                               if (stationLineListMap[stationName] != null) ...<Widget>[
                                 Positioned(
                                   top: 10,
-                                  child: IconButton(
-                                    onPressed: () {
+                                  child: GestureDetector(
+                                    onTap: () {
                                       BusInfoDialog(
                                         context: context,
                                         widget: StationBusRouteDisplayAlert(
@@ -594,7 +594,36 @@ query {
                                         ),
                                       );
                                     },
-                                    icon: const Icon(Icons.sunny),
+                                    child: Stack(
+                                      children: <Widget>[
+                                        const IconButton(onPressed: null, icon: Icon(Icons.sunny)),
+
+                                        if (stationName != '' && stationLineListMap.isNotEmpty) ...<Widget>[
+                                          Positioned(
+                                            bottom: 6,
+                                            right: 6,
+                                            child: Container(
+                                              width: 16,
+                                              height: 16,
+                                              decoration: const BoxDecoration(
+                                                shape: BoxShape.circle,
+                                                color: Colors.white,
+                                              ),
+                                              child: Center(
+                                                child: Text(
+                                                  stationLineListMap[stationName]!.toSet().length.toString(),
+                                                  style: const TextStyle(
+                                                    color: Colors.black,
+                                                    fontSize: 10,
+                                                    fontWeight: FontWeight.bold,
+                                                  ),
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ],
+                                    ),
                                   ),
                                 ),
                               ],
