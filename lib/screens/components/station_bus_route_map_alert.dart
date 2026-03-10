@@ -37,6 +37,8 @@ class _StationBusRouteMapAlertState extends ConsumerState<StationBusRouteMapAler
 
   double? currentZoom;
 
+  List<Marker> markerList = <Marker>[];
+
   ///
   @override
   void initState() {
@@ -58,6 +60,8 @@ class _StationBusRouteMapAlertState extends ConsumerState<StationBusRouteMapAler
   @override
   Widget build(BuildContext context) {
     makeMinMaxLatLng();
+
+    makeMarkerList();
 
     return Scaffold(
       body: Stack(
@@ -82,6 +86,8 @@ class _StationBusRouteMapAlertState extends ConsumerState<StationBusRouteMapAler
                 tileProvider: CachedTileProvider(),
                 userAgentPackageName: 'com.example.app',
               ),
+
+              MarkerLayer(markers: markerList),
             ],
           ),
 
@@ -137,6 +143,24 @@ class _StationBusRouteMapAlertState extends ConsumerState<StationBusRouteMapAler
       setState(() => currentZoom = newZoom);
 
       appParamNotifier.setCurrentZoom(zoom: newZoom);
+    }
+  }
+
+  ///
+  void makeMarkerList() {
+    if (widget.lineBusRoute != null) {
+      for (final Map<String, String> element in widget.lineBusRoute!) {
+        markerList.add(
+          Marker(
+            point: LatLng(
+              (element['lat'] != null) ? element['lat']!.toDouble() : 0,
+
+              (element['lon'] != null) ? element['lon']!.toDouble() : 0,
+            ),
+            child: const Icon(Icons.location_on, color: Colors.redAccent),
+          ),
+        );
+      }
     }
   }
 }
