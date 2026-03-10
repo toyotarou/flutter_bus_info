@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:graphql_flutter/graphql_flutter.dart';
 
 import 'screens/home_screen.dart';
@@ -8,7 +9,7 @@ import 'screens/home_screen.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await initHiveForFlutter();
-  runApp(const MyApp());
+  runApp(const ProviderScope(child: MyApp()));
 }
 
 //////////////////////////////////////////////////////////////////
